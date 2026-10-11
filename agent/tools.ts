@@ -60,4 +60,54 @@ export const tools: Tool[] = [
     },
     run: async ({ sides = 6 }) => ({ rolled: Math.floor(Math.random() * sides) + 1, sides }),
   },
+
+  {
+    name: "get_joke",
+    description: "Get a random joke. Use when the user wants a joke.",
+    parameters: {
+      type: "object",
+      properties: {}
+    },
+    run: async () => {
+      const res = await fetch(
+        "https://official-joke-api.appspot.com/random_joke"
+      );
+
+      return res.json();
+    },
+  },
+
+  {
+    name: "get_country_info",
+    description: "Get facts about a country, including its capital and population.",
+    parameters: {
+      type: "object",
+      properties: {
+        country: {
+          type: "string",
+          description: "Country name, e.g. India"
+        },
+      },
+      required: ["country"],
+    },
+    run: async ({ country }, { baseUrl }) => {
+      const res = await fetch(`${baseUrl}/api/countries?country=${encodeURIComponent(country)}`);
+
+      const data = await res.json()
+
+      // return {
+      //   capital: data.capitals?.[0].name,
+      //   population: data.population,
+      //   region: data.region,
+      // }
+
+      return Response.json(data);
+      // return {
+      //   capital: data.capital?.[0],
+      //   population: data.population,
+      //   region: data.region,
+      // };
+    },
+  },
+
 ];
