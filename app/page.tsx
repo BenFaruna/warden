@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Bot,
   Check,
   ChevronRight,
   CircleAlert,
@@ -23,13 +22,14 @@ import { cn } from "@/lib/utils";
 
 type Step = { tool: string; args: unknown; result: any; error?: boolean };
 type Message = { role: "user" | "agent"; text: string; steps?: Step[]; error?: boolean };
-type Status = { hasApiKey: boolean; model: string; tools: { name: string; description: string }[] };
+type Status = { hasApiKey: boolean; model: string; models: string[]; tools: { name: string; description: string }[] };
 type WalletInfo = { address: string | null; balance?: string };
 
 const EXAMPLES = ["What's the weather in Mumbai?", "What's in your wallet?", "Roll a 20 sided dice"];
 
 export default function Home() {
   const [status, setStatus] = useState<Status | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -40,7 +40,10 @@ export default function Home() {
   const loadWallet = () => fetch("/api/wallet").then((r) => r.json()).then(setWallet);
 
   useEffect(() => {
-    fetch("/api/agent").then((r) => r.json()).then(setStatus);
+    fetch("/api/agent").then((r) => r.json()).then((data) => {
+      setStatus(data);
+      if (data.model) setSelectedModel(data.model);
+    });
     loadWallet();
   }, []);
 
@@ -66,7 +69,10 @@ export default function Home() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history.filter((m) => !m.error).map(({ role, text }) => ({ role, text })) }),
+        body: JSON.stringify({
+          model: selectedModel || status?.model || "",
+          messages: history.filter((m) => !m.error).map(({ role, text }) => ({ role, text })),
+        }),
       });
       const data = await res.json();
       setMessages((m) => [...m, data.error ? { role: "agent", text: data.error, error: true } : { role: "agent", text: data.answer, steps: data.steps }]);
@@ -84,17 +90,34 @@ export default function Home() {
       {/* Header */}
       <header className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Label>
-            <img src="/risein-logo.svg" alt="Rise In" className="mr-3 h-5 w-auto" />
-            <span className="text-foreground">/ Agentmaxxing</span>&nbsp;starter kit
-          </Label>
-          {status && <Label>Model: {status.model}</Label>}
+          <div className="flex items-center gap-3">
+            <img src="/warden.png" alt="Warden" className="size-12 object-contain" />
+            <div>
+              <p className="font-mono text-sm font-bold tracking-[0.12em] text-foreground uppercase">Warden</p>
+              <p className="font-mono text-xs text-muted-foreground">Agent wallet on Base Sepolia</p>
+            </div>
+          </div>
+          {status && (
+            <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <span>Model:</span>
+              <select
+                value={selectedModel || status.model}
+                onChange={(event) => setSelectedModel(event.target.value)}
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
+                aria-label="Select Gemini model"
+              >
+                {(status.models?.length ? status.models : [status.model]).map((model) => (
+                  <option key={model} value={model}>{model}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         <h1 className="text-5xl leading-[0.9] font-bold tracking-[-0.045em] uppercase md:text-7xl">
-          Agentic <span className="text-primary">starter.</span>
+          An agent wallet <span className="text-primary">with guardrails.</span>
         </h1>
         <p className="max-w-xl text-lg text-muted-foreground">
-          An AI agent that uses your tools and pays for APIs with its own wallet.
+          Warden is an AI agent that uses its own Base Sepolia wallet to call tools and pay for APIs. Off-chain spending budgets help limit x402 payments, while webpage content is treated as untrusted.
         </p>
       </header>
 
@@ -172,7 +195,7 @@ export default function Home() {
               {messages.length === 0 && (
                 <div className="flex flex-col items-center gap-5 py-16 text-center">
                   <div className="flex size-12 items-center justify-center bg-primary text-primary-foreground">
-                    <Bot className="size-6" />
+                    <img src="/warden.png" alt="" className="size-10 object-contain" />
                   </div>
                   <div>
                     <p className="text-2xl font-bold tracking-tight uppercase">Ask your agent something</p>
@@ -202,7 +225,7 @@ export default function Home() {
                 ) : (
                   <div key={i} className="flex max-w-[85%] gap-3 self-start">
                     <div className="flex size-8 shrink-0 items-center justify-center border">
-                      <Bot className="size-4 text-primary" />
+                      <img src="/warden.png" alt="" className="size-7 object-contain" />
                     </div>
                     <div className="flex min-w-0 flex-col gap-2">
                       {m.steps?.map((s, j) => <ToolCall key={j} step={s} />)}

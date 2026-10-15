@@ -6,7 +6,13 @@ import { cn } from "@/lib/utils";
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
 const jetBrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono" });
 
-export const metadata = { title: "Agentic Starter" };
+export const metadata = {
+  title: "Warden | Agent Wallet with Guardrails",
+  description: "Warden is a testnet AI agent wallet with tool calling and off-chain x402 spending budgets.",
+  icons: {
+    icon: "/favicon.png",
+  },
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

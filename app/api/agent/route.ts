@@ -1,4 +1,4 @@
-import { MODEL, runAgent } from "@/agent/agent";
+import { MODEL, MODELS, runAgent } from "@/agent/agent";
 import { tools } from "@/agent/tools";
 
 // GET /api/agent -> setup status + the list of tools (shown on the page)
@@ -6,6 +6,7 @@ export async function GET() {
   return Response.json({
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
     model: MODEL,
+    models: MODELS,
     tools: tools.map((t) => ({ name: t.name, description: t.description })),
   });
 }
@@ -16,9 +17,9 @@ export async function POST(req: Request) {
     return Response.json({ error: "Add GEMINI_API_KEY to your .env file, then restart `npm run dev`." }, { status: 500 });
   }
 
-  const { messages } = await req.json();
+  const { messages, model } = await req.json();
   try {
-    const result = await runAgent(messages, { baseUrl: new URL(req.url).origin });
+    const result = await runAgent(messages, { baseUrl: new URL(req.url).origin }, model || MODEL);
     return Response.json(result);
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });

@@ -20,6 +20,9 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 
 const WALLET_FILE = path.join(process.cwd(), ".agent-wallet.json");
+const X402_BUDGET_FILE = path.join(process.cwd(), ".x402-budget.json");
+const X402_MAX_PER_CALL = Number(process.env.X402_MAX_PER_CALL ?? "0.05");
+const X402_DAILY_BUDGET = Number(process.env.X402_DAILY_BUDGET ?? "0.50");
 const chain = createPublicClient({ chain: baseSepolia, transport: http() });
 
 export type Payment = { from: Address; to: Address; amount: string; asset: string; resource: string; nonce: string };
@@ -53,6 +56,67 @@ export async function getWalletBalance() {
   return `${formatEther(wei)} ETH`;
 }
 
+export function getX402BudgetStatus() {
+  const today = new Date().toISOString().slice(0, 10);
+  const state = (() => {
+    try {
+      if (!fs.existsSync(X402_BUDGET_FILE)) return { date: today, spent: 0 };
+      const raw = JSON.parse(fs.readFileSync(X402_BUDGET_FILE, "utf8"));
+      return { date: raw.date ?? today, spent: Number(raw.spent ?? 0) };
+    } catch {
+      return { date: today, spent: 0 };
+    }
+  })();
+
+  const spent = state.date === today ? Number(state.spent ?? 0) : 0;
+  return {
+    maxPerCall: X402_MAX_PER_CALL,
+    dailyBudget: X402_DAILY_BUDGET,
+    spentToday: spent,
+    remainingDaily: Math.max(X402_DAILY_BUDGET - spent, 0),
+    lastReset: state.date,
+  };
+}
+
+function ensureX402Budget(amount: string | number, payTo?: string) {
+  const value = Number(amount);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid x402 price: ${amount}`);
+  }
+
+  const allowedPayees = (process.env.X402_ALLOWED_PAYEES ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (allowedPayees.length > 0 && payTo && !allowedPayees.includes(payTo.toLowerCase())) {
+    throw new Error(`x402 payments to ${payTo} are not allowed by X402_ALLOWED_PAYEES.`);
+  }
+
+  const { maxPerCall, dailyBudget } = getX402BudgetStatus();
+  if (value > maxPerCall) {
+    throw new Error(`Payment of ${amount} USDC exceeds the per-call budget of ${maxPerCall} USDC.`);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const state = (() => {
+    try {
+      const raw = fs.existsSync(X402_BUDGET_FILE) ? JSON.parse(fs.readFileSync(X402_BUDGET_FILE, "utf8")) : { date: today, spent: 0 };
+      return { date: raw.date ?? today, spent: Number(raw.spent ?? 0) };
+    } catch {
+      return { date: today, spent: 0 };
+    }
+  })();
+
+  const nextSpent = state.date === today ? Number(state.spent ?? 0) + value : value;
+  if (nextSpent > dailyBudget) {
+    throw new Error(`Payment of ${amount} USDC would exceed the daily x402 budget of ${dailyBudget} USDC.`);
+  }
+
+  fs.writeFileSync(X402_BUDGET_FILE, JSON.stringify({ date: today, spent: nextSpent }, null, 2));
+  return { ...getX402BudgetStatus(), due: value, nextSpent };
+}
+
 /** Fetch a URL. If it asks for payment (402), sign one with the wallet and try again. */
 export async function payAndFetch(url: string) {
   const first = await fetch(url);
@@ -60,6 +124,8 @@ export async function payAndFetch(url: string) {
 
   const account = requireAccount();
   const { price, asset, payTo } = await first.json();
+  ensureX402Budget(price, payTo);
+
   const payment: Payment = {
     from: account.address,
     to: payTo,
