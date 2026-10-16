@@ -1,174 +1,126 @@
 <div align="center">
 
-<!-- Replace with your logo path or URL -->
 <img src="./public/warden.png" alt="Warden logo" width="120" />
 
 # Warden
 
-**An AI agent with a wallet it can't abuse.**
+**An AI agent with a testnet wallet, tool calling, and experimental spending guardrails.**
 
-Spending power for agents, enforced by rules instead of trust.
-
-[Twitter/X](#social-media) · [Demo Video](#demo) · [Future Scope](#future-scope)
+[Twitter/X](#social-media) · [Demo](#demo) · [Roadmap](#roadmap) · [Live](https://warden.pxxlspace.cv/)
 
 </div>
 
 ---
 
-## Project Description
+## What Warden does
 
-### The problem
+Warden is a Next.js chat app backed by a Google Gemini agent. The agent can call tools, create and inspect a Base Sepolia wallet, read webpages, and use a mock paid-weather endpoint. The homepage also lets you choose from the Gemini models configured in the environment.
 
-AI agents are starting to move money: paying for APIs, swapping tokens, funding other agents. But handing an LLM a raw private key is dangerous. Agents can be prompt-injected by a malicious webpage, hallucinate an address, or get stuck in a loop and drain a wallet.
+This repository is currently a prototype. It does **not** contain or connect to a policy smart contract, and the agent cannot make token transfers. The wallet balance lookup reads the wallet's native testnet ETH balance; the mock weather payment is a signed message, not an on-chain USDC payment.
 
-### What Warden does
+## Current capabilities
 
-Warden is an AI agent that owns an on-chain wallet and can use it autonomously, inside strict spending limits. The long-term goal is a policy-enforced agent wallet where the agent holds only a scoped, revocable session key. Per-transaction caps, daily budgets, contract allowlists, and human approval for large payments are enforced on-chain rather than by the agent's own good behavior. Warden also pays for paid APIs automatically using the **x402** (HTTP 402) pay-per-request protocol.
-
-Even if the agent is manipulated, the damage is capped by the policy.
-
-> **Current status (Week 1):** a working tool-calling agent with its own Base Sepolia wallet and x402 payments for paid endpoints. The guardrail layer is planned for Weeks 2 and 3 (see [Future Scope](#future-scope)).
-
----
-
-## Tech Stack
-
-> Fill in the exact versions from your `package.json` / lockfile.
-
-| Layer | Technology | Version |
+| Tool | What it does | Important detail |
 | --- | --- | --- |
-| Language | TypeScript | `5.9.3` |
-| Framework | Next.js (API routes) | `16.3.6` |
-| Runtime | Node.js | `24.10.0` |
-| Blockchain library | viem | `2.56.9` |
-| Network | Base Sepolia (testnet) | Chain ID `84532` |
-| Payment token | USDC (testnet) | n/a |
-| AI provider SDK | `<your SDK>` | `x.x.x` |
+| `get_weather` | Requests demo weather data from the local `/api/weather` endpoint. | The endpoint requests a `0.01 USDC`-labelled signed payment, but no USDC is transferred. |
+| `get_my_wallet` | Reports the agent wallet address, native ETH balance, and x402 budget status. | The balance is queried on Base Sepolia. |
+| `roll_dice` | Rolls a die with the requested number of sides, defaulting to 6. | Local utility; no wallet required. |
+| `get_joke` | Requests a random joke from the Official Joke API. | Requires the external service to be reachable. |
+| `get_vault_policy` | Returns example policy values and x402 budget status. | Static demo data; it does not read a deployed vault or enforce those values. |
+| `request_approval` | Returns a generated request ID and pending-review details. | No request is persisted, sent to an owner, or approved on-chain. |
+| `read_url` | Fetches a URL, removes basic script/style markup, and returns a text excerpt. | Page content is untrusted; see [Security and limitations](#security-and-limitations). |
+| `get_country_info` | Calls the local `/api/countries` route. | Experimental; the route's API-key name and `.env.example` are currently inconsistent. |
 
----
+The agent's system prompt warns it not to follow instructions or payment addresses found in web content. This is a model instruction, not an enforceable security boundary.
 
-## Tools
+## Spending budget behavior
 
-The agent currently supports **5 built-in tools**:
+When the mock weather endpoint responds with HTTP 402, the agent checks the declared price against `X402_MAX_PER_CALL` and `X402_DAILY_BUDGET` before signing the payment message. The daily total is stored locally in `.x402-budget.json` and rolls over by UTC date. `X402_ALLOWED_PAYEES` can optionally restrict the payee addresses used by this flow.
 
-| # | Tool | Description | Wallet / Payment |
-| --- | --- | --- | --- |
-| 1 | `get_weather` | Gets the current weather for a city from a paywalled API. | Pays **0.01 USDC** via x402 from the agent's wallet |
-| 2 | `get_my_wallet` | Returns the agent's own wallet address and ETH balance on Base Sepolia. | Read-only |
-| 3 | `roll_dice` | Rolls a dice with a configurable number of sides (default 6). | None |
-| 4 | `get_joke` | Fetches a random joke from the Official Joke API. | None |
-| 5 | `get_country_info` | Returns facts about a country (capital, population, region). | None |
+These are **off-chain demo checks**, not a wallet policy or security guarantee. Budget state is local to the app's filesystem, is not concurrency-safe, and is recorded before signing and retrying the request. A signing or request failure can therefore still count toward the budget. The mock server verifies the signed message, but does not settle a payment or verify a blockchain transaction.
 
-Tools 3 to 5 are utility and testing tools used to validate the tool-calling framework. They will be replaced or extended with wallet, policy, and approval tools as the project evolves (see [Future Scope](#future-scope)).
+## Model selection
 
----
+Set `GEMINI_MODELS` to a comma-separated list of Gemini model IDs. The list populates the homepage dropdown; its first entry is the initial/default selection. If `GEMINI_MODELS` is unset, `GEMINI_MODEL` is used as the single model. If neither is set, the default is `gemini-flash-latest`.
 
-## Supported AI Models
+```dotenv
+GEMINI_MODEL=gemini-flash-latest
+GEMINI_MODELS=gemini-flash-latest,gemini-2.5-flash
+```
 
-> List every model your agent supports with exact versions. If you have a model switcher, list all of them.
+The model IDs must be available to the configured Google AI API key. Restart the development server after changing environment variables.
 
-| Provider | Model | Version / ID | Default |
-| --- | --- | --- | --- |
-| Google | Gemini 3.8 Flash | `gemini-3.8-flash` | Yes |
+## Tech stack
 
----
+Versions below are resolved in `package-lock.json`:
 
-## Key Features
+| Layer | Technology | Version / details |
+| --- | --- | --- |
+| Language | TypeScript | 5.9.3 |
+| Framework | Next.js | 16.4.0 |
+| UI | React | 19.3.0 |
+| AI SDK | `@google/genai` | 2.27.0 |
+| EVM client | viem | 2.57.3 |
+| Network for wallet balance lookup | Base Sepolia | Chain ID `84532` |
 
-- **Autonomous tool calling:** the agent decides which tool to use based on the user's request.
-- **Agent-owned wallet:** the agent has its own address on Base Sepolia and can inspect its balance.
-- **x402 pay-per-request:** when an API responds with HTTP 402, the agent signs a USDC payment and retries automatically.
-- **Extensible tool framework:** each tool is a typed definition (`name`, `description`, JSON-schema `parameters`, `run`), so adding a new capability takes a few lines.
-- **Testnet-first:** all payments run on Base Sepolia, so there is no real money at risk while the system is built.
+## Getting started
 
----
-
-## Demo
-
-**Week 1 (warden.v1):** [Link](https://x.com/Barthol85956518/status/2109341716759331183)
-
----
-
-## Future Scope
-
-Planned improvements for the coming weeks:
-
-**Week 2: Wallet guardrails**
-
-- Smart-contract wallet (ERC-4337) with a scoped, revocable session key for the agent
-- Per-transaction and rolling daily spend caps
-- Allowlisted contracts, function selectors, recipients, and tokens
-- Instant kill switch that revokes the agent's session key
-- Replace the demo tools (`roll_dice`, `get_joke`) with `send_token`, `pay_for_api`, and `request_approval`
-- Foundry tests covering attack scenarios
-
-**Week 3: x402 policy checks and human approval**
-
-- x402 payment wrapper that checks every price against the policy before signing
-- Human-in-the-loop approval flow for payments above a threshold (Telegram or web notification)
-- Dashboard showing agent activity, budgets, and blocked attempts
-- Red-team demo: a prompt-injection attack that tries to drain the wallet and is rejected on-chain
-
-**Stretch**
-
-- Natural-language policy authoring with a human-reviewed preview
-- Per-merchant budgets and spend analytics
-- Anomaly detection that auto-pauses the agent
-- Multiple agents with separate policies under one owner
-- ZK-based proofs for private policy compliance
-
----
-
-## Week 1 Submission
-
-### Task summary
-
-| Requirement | Status |
-| --- | --- |
-| Choose a niche / problem / project idea | Done: safe spending infrastructure for AI agents with wallets |
-| Modify the default Agentmaxxin project or build from scratch | Done: `<modified default project / new project>` |
-| At least 5 core built-in tools | Done: 5 tools (`get_weather`, `get_my_wallet`, `roll_dice`, `get_joke`, `get_country_info`) |
-| README includes logo, name, description, tech stack, tools, models, features, demo, future scope, socials | Done |
-| Dedicated Twitter/X product page | [Warden](https://x.com/Barthol85956518) |
-
-### What was built this week
-
-- Set up the agent framework and tool-calling loop.
-- Implemented the agent's wallet on Base Sepolia, including address and balance lookup.
-- Integrated an x402-paywalled weather API that the agent pays for automatically (0.01 USDC per call).
-- Added utility tools to test how the framework handles different tool shapes: no-parameter tools, optional parameters, external API calls, and internal API routes.
-
-### What was learned
-
-- How the tool schema (`name`, `description`, `parameters`) drives the model's decision on when and how to call a tool.
-- How an HTTP 402 response, a signed payment, and a retry work end to end through `payAndFetch`.
-- Where the project needs to change next: the agent currently pays without any spending policy, which is the gap the Week 2 guardrail layer is designed to close.
-
-### Week 1 demo
-
-**Week 1 (warden.v1):** [Video](https://x.com/Barthol85956518/status/2109341716759331183)
-
-### Week 1 social posts
-
-1. [Post](https://x.com/Barthol85956518/status/2109341716759331183)
-
----
-
-## Social Media
-
-- Twitter/X: [Warden](https://x.com/Barthol85956518)
-- Builder camp: [@riseinweb3](https://twitter.com/riseinweb3)
-
----
-
-## Getting Started
+Requirements: Node.js compatible with the installed Next.js version and npm.
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/BenFaruna/warden.git
 cd warden
 npm install
-cp .env.example .env   # add your model API key and agent wallet private key (testnet only)
+cp .env.example .env
 npm run dev
 ```
 
-> **Security note:** use a dedicated testnet wallet for the agent. Never put a mainnet key in `.env`.
+Add a Google AI API key as `GEMINI_API_KEY` in `.env`, then open [http://localhost:3000](http://localhost:3000). The app can create a new wallet using the **Create wallet** button, or use a testnet key provided as `WALLET_PRIVATE_KEY`.
+
+Example optional configuration:
+
+```dotenv
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-flash-latest
+GEMINI_MODELS=gemini-flash-latest,gemini-2.5-flash
+WALLET_PRIVATE_KEY=
+X402_MAX_PER_CALL=0.05
+X402_DAILY_BUDGET=0.50
+X402_ALLOWED_PAYEES=
+COUNTRIES_API_KEY=
+```
+
+Use only a dedicated test wallet. The app stores a wallet created in the UI in `.agent-wallet.json` as a private key in plaintext. Keep `.env` and `.agent-wallet.json` private; do not use a mainnet wallet or expose this prototype as a public service.
+
+## Security and limitations
+
+- There is no smart contract, vault deployment, token-transfer tool, on-chain spending cap, real approval workflow, or kill switch in this repository.
+- `get_vault_policy` and `request_approval` are illustrative placeholders, not enforcement or a durable workflow.
+- The weather endpoint is a mock API. Its `X-PAYMENT` message is custom demo data; it does not use a production x402 settlement flow or move USDC.
+- The wallet private key is held by the server process and is stored unencrypted when created through the UI. Anyone who can access that file or the configured environment can use the key.
+- The x402 budget file is local and should not be treated as tamper-proof, shared across instances, or resistant to simultaneous requests.
+- `read_url` fetches a model-selected URL from the server. Basic markup removal is not a security-grade HTML sanitizer or network-access control. Do not make this endpoint available to untrusted users or use it to fetch sensitive/internal services.
+- Tool output and the system prompt cannot guarantee protection from prompt injection.
+- `get_country_info` is experimental. The route currently checks `COUTRIES_API_KEY`, while `.env.example` lists `COUNTRIES_API_KEY`; correct this configuration mismatch before relying on the feature.
+- The application has a production build command but no dedicated automated test suite configured in `package.json`.
+
+## Demo
+
+**Week 1:** [Video](https://x.com/Barthol85956518/status/2109341716759331183)
+**Week 2:** [Video](https://x.com/Barthol85956518/status/2111033727073816774)
+
+This is a historical demo link. It does not demonstrate a deployed policy vault or the current prototype's budget checks.
+
+## Roadmap
+
+Possible next steps—not currently implemented:
+
+- Implement and test an on-chain spending-policy vault and connect agent-side transfer tools to it.
+- Replace placeholder policy and approval tools with persistent, owner-controlled workflows.
+- Improve x402 payment handling and budget persistence, including concurrency-safe accounting.
+- Add authentication and network restrictions before enabling arbitrary URL fetching for other users.
+
+## Social media
+
+- Twitter/X: [Warden](https://x.com/Barthol85956518)
+- Builder camp: [@riseinweb3](https://twitter.com/riseinweb3)
