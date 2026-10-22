@@ -10,6 +10,7 @@
  */
 import { getX402BudgetStatus, payAndFetch } from "./wallet";
 import {
+  depositAgentFundsToVault,
   getAgentWalletOverview,
   getTransactionStatus,
   getVaultOverview,
@@ -103,6 +104,20 @@ export const tools: Tool[] = [
       required: ["to", "amount"],
     },
     run: async ({ to, amount, token = "USDC" }) => sendVaultToken(to, amount, token),
+  },
+
+  {
+    name: "deposit_to_vault",
+    description: "Deposit USDC or ETH from the agent wallet into its configured AgentVault. This deposit has no vault spending cap, but it can only go to the configured vault address. For payments to any other recipient, use send_token so the vault policy applies.",
+    parameters: {
+      type: "object",
+      properties: {
+        amount: { type: "string", description: "Human-readable amount to deposit, such as 5 USDC or 0.01 ETH." },
+        token: { type: "string", enum: ["USDC", "ETH"], description: "Asset to deposit. Defaults to USDC." },
+      },
+      required: ["amount"],
+    },
+    run: async ({ amount, token = "USDC" }) => depositAgentFundsToVault(amount, token),
   },
 
   {

@@ -29,6 +29,19 @@ const tokenAbi = [
   },
 ] as const;
 
+const tokenTransferAbi = [
+  {
+    type: "function",
+    name: "transfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
 const ERROR_HINTS: Record<string, string> = {
   VaultPaused: "The owner paused the vault. Stop and tell the user; do not retry.",
   RecipientNotAllowed: "This recipient is not allowlisted. Do not retry or work around it; ask the user to allowlist it.",
@@ -328,6 +341,72 @@ export async function sendVaultToken(toValue: unknown, amountValue: unknown, tok
     if (decoded) return decoded;
     throw error;
   }
+}
+
+export async function depositAgentFundsToVault(amountValue: unknown, tokenValue: unknown = "USDC") {
+  const token = getToken(tokenValue);
+  const amount = parseAmount(amountValue, token.decimals);
+  const account = requireWalletAccount();
+  const vault = getVaultAddress();
+
+  return serializeAgentTransaction(async () => {
+    const registeredAgent = await publicClient.readContract({
+      address: vault,
+      abi: agentVaultAbi,
+      functionName: "agent",
+    });
+    if (registeredAgent.toLowerCase() !== account.address.toLowerCase()) {
+      throw new Error("The agent wallet is not registered as this vault's agent; refusing to deposit.");
+    }
+
+    const walletClient = getAgentWalletClient();
+    let hash: Hex;
+    if (token.name === "ETH") {
+      await publicClient.call({
+        account,
+        to: vault,
+        value: amount,
+      });
+      hash = await walletClient.sendTransaction({
+        account,
+        to: vault,
+        value: amount,
+      });
+    } else {
+      const { request } = await publicClient.simulateContract({
+        account,
+        address: token.address,
+        abi: tokenTransferAbi,
+        functionName: "transfer",
+        args: [vault, amount],
+      });
+      hash = await walletClient.writeContract(request);
+    }
+
+    const transaction = await finishTransaction(hash);
+    if (transaction.status === "reverted") {
+      return {
+        ok: false,
+        error: "DepositReverted",
+        token: token.name,
+        amount: formatAmount(amount, token.decimals),
+        vaultAddress: vault,
+        hash,
+        explorer: transaction.explorer,
+      };
+    }
+    return {
+      ok: true,
+      token: token.name,
+      amount: formatAmount(amount, token.decimals),
+      from: account.address,
+      vaultAddress: vault,
+      hash,
+      explorer: transaction.explorer,
+      status: transaction.status,
+      cappedByVaultPolicy: false,
+    };
+  });
 }
 
 export async function requestVaultApproval(toValue: unknown, amountValue: unknown, reasonValue: unknown, tokenValue: unknown = "USDC") {

@@ -28,12 +28,13 @@ The contract and ABI are in `contracts/` and `lib/abi/AgentVault.ts`. Agent tool
 | `get_joke` | Requests a random joke from the Official Joke API. | Requires the external service to be reachable. |
 | `get_vault_policy` | Reads live pause state, USDC/ETH policies and remaining daily caps, vault balances, configured recipient status, and pending requests. | Only recipients listed in `AGENT_ALLOWED_RECIPIENTS` are displayed; the contract itself remains authoritative. |
 | `send_token` | Sends USDC or ETH from the vault to a recipient. | Simulates first and returns decoded policy errors by default. Set `DEMO_FORCE_SEND=true` to submit a testnet transaction even if simulation identifies a policy revert. |
+| `deposit_to_vault` | Deposits USDC or ETH from the agent wallet into the configured vault. | The tool has no recipient argument: its only possible destination is the configured vault. Deposits are not subject to vault spending caps. |
 | `request_approval` | Creates a transfer request on-chain with a reason and returns its request ID. | Funds do not move until the owner approves the request using an owner-controlled wallet. |
 | `check_tx` | Reads a mined Base Sepolia transaction receipt and returns its BaseScan link. | A pending or unknown transaction does not yet have a receipt. |
 | `read_url` | Fetches a URL, removes basic script/style markup, and returns a text excerpt. | Page content is untrusted; see [Security and limitations](#security-and-limitations). |
 | `get_country_info` | Calls the local `/api/countries` route. | Experimental; the route's API-key name and `.env.example` are currently inconsistent. |
 
-The agent's system prompt warns it not to follow instructions or payment addresses found in web content. This is a model instruction, not an enforceable security boundary; the vault contract is the enforcement boundary for transfers made through it.
+The agent's system prompt warns it not to follow instructions or payment addresses found in web content. This is a model instruction, not an enforceable security boundary; the vault contract is the enforcement boundary for transfers made through it. The agent may also fund the vault from its own wallet using `deposit_to_vault`; that tool can send only to the configured vault address.
 
 ## Spending budget behavior
 
@@ -103,7 +104,8 @@ Use only a dedicated test wallet. The app stores a wallet created in the UI in `
 
 ## Security and limitations
 
-- The vault enforces token allowlists, recipient allowlists, transaction caps, daily direct-transfer caps, approvals, and pause state on-chain. These checks apply only to transfers through the deployed vault; they do not govern the agent's own EOA or x402 signatures.
+- The vault enforces token allowlists, recipient allowlists, transaction caps, daily direct-transfer caps, approvals, and pause state on-chain. These checks apply to outgoing transfers through the deployed vault; they do not govern the agent's own EOA or x402 signatures.
+- `deposit_to_vault` is an uncapped inbound funding path from the agent EOA to the configured vault only. It exposes no arbitrary destination input and verifies that the signer is the vault's configured agent. For any transfer from the agent wallet to another address, no such tool is provided; payments from vault funds must use `send_token` or `request_approval`.
 - The deployment record in `contracts/deployments/84532.json` is used as the default vault address. Set `VAULT_ADDRESS` if using another Base Sepolia deployment. Confirm the address and agent configuration before funding the vault.
 - `request_approval` creates a real on-chain request, but this app has no owner console or in-app notification/approval flow. The owner must approve or reject through a separate wallet interface.
 - Transactions are simulated before submission by default. `DEMO_FORCE_SEND=true` is for controlled Base Sepolia demonstrations only: it submits transactions even when simulation identifies a contract policy revert, so reverted transactions still incur gas.
