@@ -8,7 +8,14 @@
  * Add your own tool: copy one of the objects below, change it,
  * and save. It shows up in the "Tools" list on the page.
  */
-import { getWalletAddress, getWalletBalance, getX402BudgetStatus, payAndFetch } from "./wallet";
+import { getX402BudgetStatus, payAndFetch } from "./wallet";
+import {
+  getAgentWalletOverview,
+  getTransactionStatus,
+  getVaultOverview,
+  requestVaultApproval,
+  sendVaultToken,
+} from "../lib/vault/actions";
 
 export type Tool = {
   name: string;
@@ -39,13 +46,10 @@ export const tools: Tool[] = [
   // ─── 2. Wallet tool: read the agent's own wallet ───
   {
     name: "get_my_wallet",
-    description: "Get the agent's own wallet address and its ETH balance on Base Sepolia (testnet).",
+    description: "Get the agent's Base Sepolia ETH and USDC balances, its registration status, and the AgentVault address and balances.",
     parameters: { type: "object", properties: {} },
     run: async () => ({
-      address: getWalletAddress(),
-      balance: await getWalletBalance(),
-      network: "Base Sepolia (testnet)",
-      vaultAddress: "demo-vault: not deployed in this repo",
+      ...(await getAgentWalletOverview()),
       x402: getX402BudgetStatus(),
     }),
   },
@@ -81,40 +85,53 @@ export const tools: Tool[] = [
 
   {
     name: "get_vault_policy",
-    description: "Read the agent's demo spending policy before sending funds or paying for APIs.",
+    description: "Read live AgentVault policy, pause status, vault balances, remaining daily budgets, configured recipient statuses, and pending approval requests on Base Sepolia.",
     parameters: { type: "object", properties: {} },
-    run: async () => ({
-      vaultAddress: "demo-vault: not deployed in this repo",
-      paused: false,
-      perTxCap: "2.00 USDC",
-      approvalThreshold: "1.00 USDC",
-      dailyCap: "5.00 USDC",
-      tokenAllowlist: ["USDC", "ETH"],
-      recipientAllowlist: ["agent-wallet", "friend-recipient", "contract-demo"],
-      x402: getX402BudgetStatus(),
-    }),
+    run: async () => getVaultOverview(),
+  },
+
+  {
+    name: "send_token",
+    description: "Send USDC or ETH from the AgentVault to a recipient through the on-chain policy. Use human-readable amounts. Respect errors and their hints; never split a transfer to bypass a cap or retry a disallowed recipient.",
+    parameters: {
+      type: "object",
+      properties: {
+        to: { type: "string", description: "Recipient EVM address." },
+        amount: { type: "string", description: "Human-readable amount, such as 0.5 USDC or 0.001 ETH." },
+        token: { type: "string", enum: ["USDC", "ETH"], description: "Asset to transfer. Defaults to USDC." },
+      },
+      required: ["to", "amount"],
+    },
+    run: async ({ to, amount, token = "USDC" }) => sendVaultToken(to, amount, token),
   },
 
   {
     name: "request_approval",
-    description: "File an approval request before sending an amount above the threshold or to a new recipient. Only use this when the user explicitly wants the payment or the policy says approval is required.",
+    description: "File an on-chain request for the AgentVault owner to approve a transfer that is within the hard per-transaction cap but requires owner approval. Only request transfers the user explicitly asked for. The owner must approve out of band; submitting a request does not move funds.",
     parameters: {
       type: "object",
       properties: {
-        amount: { type: "string", description: "Amount in human-readable units, e.g. 1.50 USDC" },
-        recipient: { type: "string", description: "Recipient address or name" },
-        reason: { type: "string", description: "Why the transfer is needed" },
+        to: { type: "string", description: "Recipient EVM address." },
+        amount: { type: "string", description: "Human-readable amount, such as 1.5 USDC." },
+        token: { type: "string", enum: ["USDC", "ETH"], description: "Asset to transfer. Defaults to USDC." },
+        reason: { type: "string", description: "Short explanation for the owner, up to 280 bytes." },
       },
-      required: ["amount", "recipient", "reason"],
+      required: ["to", "amount", "reason"],
     },
-    run: async ({ amount, recipient, reason }) => ({
-      requestId: crypto.randomUUID(),
-      status: "pending_owner_review",
-      amount,
-      recipient,
-      reason,
-      note: "This repo focuses on the agent side only; the owner approval action is handled out of band in the demo flow.",
-    }),
+    run: async ({ to, amount, token = "USDC", reason }) => requestVaultApproval(to, amount, reason, token),
+  },
+
+  {
+    name: "check_tx",
+    description: "Check a mined Base Sepolia transaction's receipt status and return its BaseScan link.",
+    parameters: {
+      type: "object",
+      properties: {
+        hash: { type: "string", description: "0x-prefixed transaction hash." },
+      },
+      required: ["hash"],
+    },
+    run: async ({ hash }) => getTransactionStatus(hash),
   },
 
   {

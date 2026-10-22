@@ -29,11 +29,11 @@ export type Payment = { from: Address; to: Address; amount: string; asset: strin
 
 /** The wallet from .env or .agent-wallet.json, or null if none was created yet. */
 function loadAccount() {
-  const key = process.env.WALLET_PRIVATE_KEY || (fs.existsSync(WALLET_FILE) && JSON.parse(fs.readFileSync(WALLET_FILE, "utf8")).privateKey);
+  const key = process.env.AGENT_PRIVATE_KEY || process.env.WALLET_PRIVATE_KEY || (fs.existsSync(WALLET_FILE) && JSON.parse(fs.readFileSync(WALLET_FILE, "utf8")).privateKey);
   return key ? privateKeyToAccount(key as Hex) : null;
 }
 
-function requireAccount() {
+export function requireWalletAccount() {
   const account = loadAccount();
   if (!account) throw new Error("The agent has no wallet yet. Ask the user to click 'Create wallet' first.");
   return account;
@@ -52,7 +52,7 @@ export function getWalletAddress() {
 }
 
 export async function getWalletBalance() {
-  const wei = await chain.getBalance({ address: requireAccount().address });
+  const wei = await chain.getBalance({ address: requireWalletAccount().address });
   return `${formatEther(wei)} ETH`;
 }
 
@@ -122,7 +122,7 @@ export async function payAndFetch(url: string) {
   const first = await fetch(url);
   if (first.status !== 402) return { data: await first.json() };
 
-  const account = requireAccount();
+  const account = requireWalletAccount();
   const { price, asset, payTo } = await first.json();
   ensureX402Budget(price, payTo);
 

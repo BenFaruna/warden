@@ -1,6 +1,8 @@
 node_modules
 .next
-.env
+.env*
+!.env.example
 .agent-wallet.json
+.x402-budget.json
 *.tsbuildinfo
 .DS_Store
