@@ -1,0 +1,32 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc_version = "0.8.24"
+evm_version = "cancun"   # Base Sepolia supports Cancun
+optimizer = true
+optimizer_runs = 200
+fs_permissions = [{ access = "read-write", path = "./abi" }, { access = "read-write", path = "./deployments" }]
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
+
+[fuzz]
+runs = 512
+
+[invariant]
+runs = 256
+depth = 100
+fail_on_revert = false   # handler functions deliberately trigger reverts; they are caught inside the handler
+
+# Heavier settings for a pre-release confidence run:  FOUNDRY_PROFILE=ci forge test
+[profile.ci.fuzz]
+runs = 5000
+
+[profile.ci.invariant]
+runs = 1000
+depth = 128
+fail_on_revert = false
