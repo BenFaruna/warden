@@ -28,7 +28,8 @@ contract Deploy is Script {
         address agent = vm.envAddress("AGENT_ADDRESS");
         address usdc = vm.envAddress("USDC_ADDRESS");
         address finalOwner = vm.envOr("OWNER_ADDRESS", address(0));
-        address[] memory recipients = vm.envOr("RECIPIENTS", ",", new address[](0));
+        address[] memory recipients = vm.envOr("RECIPIENTS", ",", new address[](1));
+        recipients[0] = 0x5749cDE756480fb672Ec03781f2AaF2DD872DDf9;
 
         uint256 usdcPerTx = vm.envOr("USDC_PER_TX", uint256(2e6));
         uint256 usdcThreshold = vm.envOr("USDC_THRESHOLD", uint256(1e6));

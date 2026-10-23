@@ -16,7 +16,17 @@
 
 Warden is a Next.js chat app backed by a Google Gemini agent. The agent can inspect its Base Sepolia wallet and an `AgentVault`, send USDC or ETH through the vault's on-chain policy, and file on-chain transfer requests for owner review. It can also read webpages and use a mock paid-weather endpoint. The homepage lets you choose from the Gemini models configured in the environment.
 
-The contract and ABI are in `contracts/` and `lib/abi/AgentVault.ts`. Agent tools use the Base Sepolia deployment in `contracts/deployments/84532.json` by default; `VAULT_ADDRESS` can override it. The owner console is not implemented, so approval, pause, policy, and owner-management actions must be performed separately by the vault owner.
+The contract and ABI are in `contracts/` and `lib/abi/AgentVault.ts`. Agent tools use the Base Sepolia deployment in `contracts/deployments/84532.json` by default; `VAULT_ADDRESS` can override it. The agent can read vault state, deposit its own ETH or USDC into the vault, send funds from the vault under the on-chain policy, and submit transfer requests. The owner console is not implemented, so approval, pause, policy, and other owner actions must be performed separately by the vault owner.
+
+## Current deployment
+
+| Item | Base Sepolia |
+| --- | --- |
+| Chain ID | `84532` |
+| AgentVault | [`0x7E6F2a8fE38c8d04a029B23BBFe566Cb66D1aFe2`](https://sepolia.basescan.org/address/0x7E6F2a8fE38c8d04a029B23BBFe566Cb66D1aFe2) |
+| Deployment block (recorded) | `49228340` |
+| Configured agent (recorded) | [`0x5749cDE756480fb672Ec03781f2AaF2DD872DDf9`](https://sepolia.basescan.org/address/0x5749cDE756480fb672Ec03781f2AaF2DD872DDf9) |
+| USDC token | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 
 ## Current capabilities
 
@@ -28,13 +38,13 @@ The contract and ABI are in `contracts/` and `lib/abi/AgentVault.ts`. Agent tool
 | `get_joke` | Requests a random joke from the Official Joke API. | Requires the external service to be reachable. |
 | `get_vault_policy` | Reads live pause state, USDC/ETH policies and remaining daily caps, vault balances, configured recipient status, and pending requests. | Only recipients listed in `AGENT_ALLOWED_RECIPIENTS` are displayed; the contract itself remains authoritative. |
 | `send_token` | Sends USDC or ETH from the vault to a recipient. | Simulates first and returns decoded policy errors by default. Set `DEMO_FORCE_SEND=true` to submit a testnet transaction even if simulation identifies a policy revert. |
-| `deposit_to_vault` | Deposits USDC or ETH from the agent wallet into the configured vault. | The tool has no recipient argument: its only possible destination is the configured vault. Deposits are not subject to vault spending caps. |
+| `deposit_to_vault` | Deposits USDC or ETH from the agent wallet into the configured vault. | The tool has no recipient argument: its only possible destination is the configured vault. Deposits are not subject to vault spending caps; the agent wallet still needs enough balance and gas. |
 | `request_approval` | Creates a transfer request on-chain with a reason and returns its request ID. | Funds do not move until the owner approves the request using an owner-controlled wallet. |
 | `check_tx` | Reads a mined Base Sepolia transaction receipt and returns its BaseScan link. | A pending or unknown transaction does not yet have a receipt. |
 | `read_url` | Fetches a URL, removes basic script/style markup, and returns a text excerpt. | Page content is untrusted; see [Security and limitations](#security-and-limitations). |
 | `get_country_info` | Calls the local `/api/countries` route. | Experimental; the route's API-key name and `.env.example` are currently inconsistent. |
 
-The agent's system prompt warns it not to follow instructions or payment addresses found in web content. This is a model instruction, not an enforceable security boundary; the vault contract is the enforcement boundary for transfers made through it. The agent may also fund the vault from its own wallet using `deposit_to_vault`; that tool can send only to the configured vault address.
+The agent's system prompt warns it not to follow instructions or payment addresses found in web content. This is a model instruction, not an enforceable security boundary; the vault contract is the enforcement boundary for transfers made through it. The agent may also fund the vault from its own wallet using `deposit_to_vault`; that tool can send only to the configured vault address. Wallet-to-vault deposits are separate from the vault's policy-limited outgoing transfers.
 
 ## Spending budget behavior
 
@@ -60,10 +70,10 @@ Versions below are resolved in `package-lock.json`:
 | Layer | Technology | Version / details |
 | --- | --- | --- |
 | Language | TypeScript | 5.9.3 |
-| Framework | Next.js | 16.4.0 |
-| UI | React | 19.3.0 |
-| AI SDK | `@google/genai` | 2.27.0 |
-| EVM client | viem | 2.57.3 |
+| Framework | Next.js | 16.4.3 |
+| UI | React | 19.3.1 |
+| AI SDK | `@google/genai` | 2.31.0 |
+| EVM client | viem | 2.57.10 |
 | Smart contract | Solidity `AgentVault` | Solidity `0.8.24`; OpenZeppelin Contracts `5.1.0` |
 | Network | Base Sepolia | Chain ID `84532` |
 
@@ -88,7 +98,7 @@ GEMINI_API_KEY=
 GEMINI_MODEL=gemini-flash-latest
 GEMINI_MODELS=gemini-flash-latest,gemini-2.5-flash
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
-VAULT_ADDRESS=
+VAULT_ADDRESS=0x7E6F2a8fE38c8d04a029B23BBFe566Cb66D1aFe2
 USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
 AGENT_PRIVATE_KEY=
 WALLET_PRIVATE_KEY=
@@ -106,7 +116,7 @@ Use only a dedicated test wallet. The app stores a wallet created in the UI in `
 
 - The vault enforces token allowlists, recipient allowlists, transaction caps, daily direct-transfer caps, approvals, and pause state on-chain. These checks apply to outgoing transfers through the deployed vault; they do not govern the agent's own EOA or x402 signatures.
 - `deposit_to_vault` is an uncapped inbound funding path from the agent EOA to the configured vault only. It exposes no arbitrary destination input and verifies that the signer is the vault's configured agent. For any transfer from the agent wallet to another address, no such tool is provided; payments from vault funds must use `send_token` or `request_approval`.
-- The deployment record in `contracts/deployments/84532.json` is used as the default vault address. Set `VAULT_ADDRESS` if using another Base Sepolia deployment. Confirm the address and agent configuration before funding the vault.
+- The deployment record in `contracts/deployments/84532.json` is used as the default vault address. `VAULT_ADDRESS` in the example is set to that deployment; override it only when intentionally using another Base Sepolia vault. Confirm the address and live agent configuration before funding the vault.
 - `request_approval` creates a real on-chain request, but this app has no owner console or in-app notification/approval flow. The owner must approve or reject through a separate wallet interface.
 - Transactions are simulated before submission by default. `DEMO_FORCE_SEND=true` is for controlled Base Sepolia demonstrations only: it submits transactions even when simulation identifies a contract policy revert, so reverted transactions still incur gas.
 - The contract uses a fixed 24-hour spend window, not a rolling window. Amount limits are denominated independently in each token's base units; the vault does not aggregate token values.
@@ -124,7 +134,7 @@ Use only a dedicated test wallet. The app stores a wallet created in the UI in `
 
 **Week 2:** [Video](https://x.com/Barthol85956518/status/2111033727073816774)
 
-These are historical demo links; check the current repository configuration before assuming that a video demonstrates the current tool behavior.
+**Week 3:** [Video](https://x.com/Barthol85956518/status/2113653429780300044)
 
 ## Roadmap
 

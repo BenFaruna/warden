@@ -1,0 +1,7 @@
+{
+  "agent": "0x5749cDE756480fb672Ec03781f2AaF2DD872DDf9",
+  "blockNumber": 1,
+  "chainId": 31337,
+  "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "vault": "0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496"
+}
